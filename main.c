@@ -38,8 +38,7 @@ typedef struct {
     int PLAYER2_STATE;
     int P1_RESULT;
     int P2_RESULT;
-    int P1_WIN;
-    int P2_WIN;
+    int WINNER;
 } REACTION_OUTPUT_TABLE;
 
 typedef struct {
@@ -69,6 +68,7 @@ volatile TTT_OUTPUT_TABLE TTTO_TABLE;
 volatile REACTION_OUTPUT_TABLE REACTO_TABLE;
 volatile WHAC_A_MOLE_OUTPUT_TABLE WAWO_TABLE;
 volatile END_OUTPUT_TABLE EO_TABLE;
+volatile HINT_OUTPUT_TABLE HO_TABLE;
 
 
 
@@ -131,14 +131,19 @@ void GC_TABLE_INITIALIZE(void){
     GC_TABLE.PROCESS = -1;
 }
 
+void EO_TABLE_INITIALIZE(void){
+    EO_TABLE.P1_WIN_AMOUNT = 0;
+    EO_TABLE.P2_WIN_AMOUNT = 0;
+    EO_TABLE.WHO_WIN = -1;
+}
+
 void REACTION_OUTPUT_TABLE_INITIALIZE(void){
     REACTO_TABLE.PLAYER1_STATE = 0;
     REACTO_TABLE.PLAYER2_STATE = 0;
     REACTO_TABLE.tick100us = 0;
     REACTO_TABLE.P1_RESULT = -1;
     REACTO_TABLE.P2_RESULT = -1;
-    REACTO_TABLE.P1_WIN = 0;
-    REACTO_TABLE.P2_WIN = 0;
+    REACTO_TABLE.WINNER = -1;
 }
 void WHAC_A_MOLE_TABLE_INITIALIZE(void){
 	WAWO_TABLE.SCORE_P1 = 0;
@@ -149,7 +154,7 @@ void WHAC_A_MOLE_TABLE_INITIALIZE(void){
 	WAWO_TABLE.MISS = 0;
 	WAWO_TABLE.NOT_HIT_NOT_MISS = 0;
 	WAWO_TABLE.REMAINING_TIME = 0; // 0.001us 
-    WAWO_TABLE.WINNER = 0;
+    WAWO_TABLE.WINNER = -1;
     WAWO_TABLE.tick100us= 0 ;//0.001s
 	WAWO_TABLE.PLAYER1_STATE = 0;
 	WAWO_TABLE.PLAYER2_STATE= 0;
@@ -167,7 +172,6 @@ HINT_OUTPUT_TABLE WRITE_HO_TABLE(void){
 
 
 void PROCESS_HINT(void){
-    HINT_OUTPUT_TABLE HO_TABLE;
     while(GC_TABLE.P1_PRESS != 1 || GC_TABLE.P2_PRESS != 1){
         HO_TABLE = WRITE_HO_TABLE();
         HINT_OUTPUT(HO_TABLE);
@@ -236,12 +240,13 @@ void PROCESS_FIVE(void){
         WHAC_A_MOLE_OUTPUT(WAWO_TABLE);// if 00 - 10 or 20 - 21 remaning time need to be reset
     }
     T2CONbits.TMR2ON = 0;
-    WAWO_TABLE
+    WAWO_TABLE = WHAC_A_MOLE_UPDATE_WHO_WIN(WAWO_TABLE);
     return;
 }
 
 void main(void){   
     GC_TABLE_INITIALIZE();
+    EO_TABLE_INITIALIZE();
     UART_INITIALIZE();// include
     CONFIG_INITIALIZE();
     START_OUTPUT();//include
@@ -264,6 +269,16 @@ void main(void){
         PROCESS_ONE();// game 1 is playing
     }
 
+    if(TTTO_TABLE.CURPLAYER == 0 && TTTO_TABLE.DETWINNER == 1){
+        EO_TABLE.P1_WIN_AMOUNT++;
+
+    }
+    else if(TTTO_TABLE.CURPLAYER == 1 && TTTO_TABLE.DETWINNER == 1){
+        EO_TABLE.P2_WIN_AMOUNT++;
+    }
+
+    
+
     GC_TABLE.PROCESS++;
     GC_TABLE.GAME_STATE++;
     GC_TABLE = CLEAR_PRESS(GC_TABLE);
@@ -277,6 +292,16 @@ void main(void){
 
     if(GC_TABLE.PROCESS == 3 && GC_TABLE.GAME_STATE == 2){
         PROCESS_THREE(); //game 2 is playing
+    }
+    
+    if(REACTO_TABLE.WINNER == 1){
+        EO_TABLE.P1_WIN_AMOUNT++;
+    }
+    else if(REACTO_TABLE.WINNER == 2){
+        EO_TABLE.P2_WIN_AMOUNT++;
+    }
+    else if(REACTO_TABLE.WINNER == -1){
+        //errpr
     }
 
     GC_TABLE.PROCESS++;
@@ -294,9 +319,29 @@ void main(void){
         PROCESS_FIVE(); //game 3 is playing
     }
 
+    if(WAWO_TABLE.WINNER == 1){
+        EO_TABLE.P1_WIN_AMOUNT++;
+    }
+    else if(WAWO_TABLE.WINNER == 2){
+        EO_TABLE.P2_WIN_AMOUNT++;
+    }
+    else if(WAWO_TABLE.WINNER == -1){
+        //error
+    }
+
+    if(EO_TABLE.P1_WIN_AMOUNT > EO_TABLE.P2_WIN_AMOUNT){
+        EO_TABLE.WHO_WIN = 1;
+    }
+    else(EO_TABLE.P1_WIN_AMOUNT < EO_TABLE.P2_WIN_AMOUNT){
+        EO_TABLE.WHO_WIN = 2;
+    }
+    else{
+        EO_TABLE.WHO_WIN = 0;
+    }
+
     GC_TABLE.PROCESS++;
     while(1){
-        END_OUTPUT();//include
+        END_OUTPUT(EO_TABLE);//include
     }
 
     
