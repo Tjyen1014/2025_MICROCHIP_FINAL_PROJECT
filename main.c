@@ -33,31 +33,31 @@ typedef struct {
 	int RANDOM_NUMBER;
 	int DISPLAY_NUMBER_1;
 	int DISPLAY_NUMBER_2;
-    unsigned long tick100us;//0.0001s
-    int PLAYER1_STATE;
-    int PLAYER2_STATE;
     int P1_RESULT;
     int P2_RESULT;
-    int WINNER;
+    int WINNER;// -1 eeror ,0 draw ,1 p1 win ,2 p2win
+    unsigned long tick100us;//0.0001s //-
+    int PLAYER1_STATE; //-
+    int PLAYER2_STATE;//-
 } REACTION_OUTPUT_TABLE;
 
 typedef struct {
 	int SCORE_P1;
-    int SCORE_P2;
+  int SCORE_P2;
 	int WHAC_A_MOLE[9];
 	char INPUT;
 	int HIT;
 	int MISS;
 	int NOT_HIT_NOT_MISS;
-    unsigned long tick100us;//0.001s
 	long REMAINING_TIME; // 0.001us 
-    int WINNER;
-	int PLAYER1_STATE;
-	int PLAYER2_STATE;
+  int WINNER;// -1 eeror ,0 draw ,1 p1 win ,2 p2win
+  unsigned long tick100us;//0.001s //-
+	int PLAYER1_STATE;//-
+	int PLAYER2_STATE;//-
 }WHAC_A_MOLE_OUTPUT_TABLE;
 
 typedef struct {
-    int WHO_WIN;
+    int WHO_WIN; // -1 eeror ,0 draw ,1 p1 win ,2 p2win
     int P1_WIN_AMOUNT;
     int P2_WIN_AMOUNT;
 }END_OUTPUT_TABLE;
