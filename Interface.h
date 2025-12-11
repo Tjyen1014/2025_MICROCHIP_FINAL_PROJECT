@@ -17,6 +17,7 @@ typedef struct {
 	int CURPLAYER;
 	int DETWINNER;
 	int SUCCESS;
+  int CURSOR;
 } TTT_OUTPUT_TABLE;
 
 typedef struct {

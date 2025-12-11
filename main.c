@@ -478,4 +478,16 @@ void __interrupt(low_priority) Lo_ISR(void)
         PIR1bits.RCIF = 0;
         return;
     }
+
+    if(RCIF)
+    {
+        if(RCSTAbits.OERR)
+        {
+            CREN = 0;
+            Nop();
+            CREN = 1;
+        }
+        
+        MyusartRead();
+    }
 }
