@@ -439,6 +439,7 @@ void __interrupt(low_priority) Lo_ISR(void)
                 WAWO_TABLE = WHAC_A_MOLE_UPDATE(WAWO_TABLE);
                 WHAC_A_MOLE_OUTPUT(WAWO_TABLE);
                 WAWO_TABLE.INPUT = 'N';
+				//delay
             }
 
         }
