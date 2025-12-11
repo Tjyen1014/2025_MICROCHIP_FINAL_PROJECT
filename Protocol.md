@@ -1,3 +1,4 @@
+# Serial Communication Protocol Specification
 **Interface:** UART (Universal Asynchronous Receiver-Transmitter)
 
 ---
@@ -99,25 +100,30 @@ Sent continuously during the waiting phase before any game stage starts.
 
 ### 5. Whac-A-Mole Game State ($WAM)
 
-Sent continuously during the Whac-A-Mole gameplay loop.
+- **Format:** `$WAM,<S1>,<S2>,<Input>,<Hit>,<Miss>,<Time>,<Win>,<P1St>,<P2St>,<M0>...<M8>*`
 
-- **Format:** `$WAM,<S1>,<S2>,<Input>,<Hit>,<Miss>,<Time>,<Win>,<M0>...<M8>*`
-
-| **Index** | **Name** | **Type** | **Description** |
+| Index | Name | Type | Description |
 | --- | --- | --- | --- |
 | 0 | Header | String | `$WAM` |
 | 1 | Score_P1 | Int | Current score of Player 1. |
 | 2 | Score_P2 | Int | Current score of Player 2. |
 | 3 | Last_Input | Char | The key currently processed (e.g., '1'-'9').
+
 Returns **'N'** if no input (empty). |
-| 4 | Hit_Count | Int | Total successful hits. |
-| 5 | Miss_Count | Int | Total misses. |
-| 6 | Remaining_Time | Long | Time remaining.  |
+| 4 | Hit_Flag | Int | **0**: No Action, **1**: **Hit Event** (Just happened this tick) |
+| 5 | Miss_Flag | Int | **0**: No Action, **1**: **Miss Event** (Wrong key or Timeout) |
+| 6 | Remaining_Time | Long | Time remaining. |
 | 7 | Winner | Int | `-1`: In Progress
+
 `0`: Draw
+
 `1`: Player 1
+
 `2`: Player 2 |
-| 8 - 16 | Mole[0]..[8] | Int | `0`: Hole is empty
+| **8** | **P1_State** | **Int** | **0**: Wait/Idle, **1**: Playing, **2**: Done |
+| **9** | **P2_State** | **Int** | **0**: Wait/Idle, **1**: Playing, **2**: Done |
+| 10 - 18 | Mole[0]..[8] | Int | `0`: Hole is empty
+
 `1`: Mole is visible |
 
 ### 4.6. Final Results ($END)
