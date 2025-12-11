@@ -27,6 +27,7 @@ typedef struct {
 	int CURPLAYER;
 	int DETWINNER;
 	int SUCCESS;
+	int CURSOR;
 } TTT_OUTPUT_TABLE;
 
 typedef struct {
@@ -364,7 +365,7 @@ void __interrupt(high_priority) Hi_ISR(void)
         }
 
         if(GC_TABLE.PROCESS == 1){
-            TTTO_TABLE = TTT_UPDATE(TTTO_TABLE,1,0,GC_TABLE.ADC_VALUE);// update TTT_UPDATE(TTT_OUTPUT_TABLE,P1_PRESS,P2_PRESS,ADRESH) return output table include
+            TTTO_TABLE = TTT_UPDATE(TTTO_TABLE,1,0,TTTO_TABLE.CURSOR);// update TTT_UPDATE(TTT_OUTPUT_TABLE,P1_PRESS,P2_PRESS,ADRESH) return output table include
             INTCONbits.INT0IF = 0;
             return;
         }
@@ -403,7 +404,7 @@ void __interrupt(high_priority) Hi_ISR(void)
         }
 
         if(GC_TABLE.PROCESS == 1){
-            TTTO_TABLE = TTT_UPDATE(TTTO_TABLE,0,1,GC_TABLE.ADC_VALUE);
+            TTTO_TABLE = TTT_UPDATE(TTTO_TABLE,0,1,TTTO_TABLE.CURSOR);
             INTCON3bits.INT1IF = 0;
             return;
         }
@@ -438,6 +439,7 @@ void __interrupt(low_priority) Lo_ISR(void)
 {
     if(PIR1bits.ADIF == 1){
         GC_TABLE.ADC_VALUE = (ADRESH << 2) + (ADRESL >> 6);
+        TTTO_TABLE.CURSOR = GC_TABLE.ADC_VALUE / 114;
         PIR1bits.ADIF = 0;
         return;
     }
