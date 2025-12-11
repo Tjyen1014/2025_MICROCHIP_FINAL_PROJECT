@@ -56,6 +56,10 @@ typedef struct {
     int P2_WIN_AMOUNT;
 }END_OUTPUT_TABLE;
 
+#define STATE_IDLE 0
+#define STATE_PLAYING 1
+#define STATE_GAMEOVER 2
+
 //UART
 void UART_INITIALIZE();
 void START_OUTPUT();
