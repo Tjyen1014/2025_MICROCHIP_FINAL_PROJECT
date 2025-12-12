@@ -10,8 +10,8 @@ import math
 #   CONFIG & SETTINGS
 # ==========================================
 SERIAL_PORT = 'COM3'   
-BAUD_RATE = 9600
-WIDTH, HEIGHT = 1024, 768
+BAUD_RATE = 2400
+WIDTH, HEIGHT = 1500, 800
 FPS = 60
 
 # ★★★ SIMULATION SWITCH ★★★
