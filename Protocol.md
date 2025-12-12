@@ -7,7 +7,7 @@ The receiving application must configure the serial port with the following para
 
 | Parameter | Value |
 | :--- | :--- |
-| **Baud Rate** | **9600** bps |
+| **Baud Rate** | **2400** bps |
 | **Port** | COM? |
 
 ---

@@ -6,22 +6,14 @@ int lenStr = 0;
 volatile int string_ready = 0;
 void UART_Initialize() {
            
-    /*       TODObasic   
-           Serial Setting      
-        1.   Setting Baud rate
-        2.   choose sync/async mode 
-        3.   enable Serial port (configures RX/DT and TX/CK pins as serial port pins)
-        3.5  enable Tx, Rx Interrupt(optional)
-        4.   Enable Tx & RX
-    */
     TRISCbits.TRISC6 = 1;            
     TRISCbits.TRISC7 = 1;            
     
-    //  Setting baud rate
+    //  Setting baud rate 2400 for 1MHz
     TXSTAbits.SYNC = 0;           
-    BAUDCONbits.BRG16 = 0;          
+    BAUDCONbits.BRG16 = 1;          
     TXSTAbits.BRGH = 0;
-    SPBRG = 51;      
+    SPBRG = 25;      
     
    //   Serial enable
     RCSTAbits.SPEN = 1;              

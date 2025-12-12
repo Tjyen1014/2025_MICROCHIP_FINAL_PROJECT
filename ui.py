@@ -5,16 +5,15 @@ import sys
 import time
 import random
 import math
+import os # For file path handling
 
 # ==========================================
 #   CONFIG & SETTINGS
 # ==========================================
 SERIAL_PORT = 'COM3'   
 BAUD_RATE = 9600
-WIDTH, HEIGHT = 1024, 768
+WIDTH, HEIGHT = 400, 300
 FPS = 60
-
-# ★★★ SIMULATION SWITCH ★★★
 USE_SIMULATION = True  
 
 # --- Color Palette ---
@@ -39,54 +38,171 @@ shared_state = {
     "connected": False,
     "scene": "WAITING",
     "raw_data": [],
-    "last_update": 0
+    "last_update": 0  # Timestamp to detect new packets
 }
+
+# ==========================================
+#   SOUND MANAGER (RESTORED)
+# ==========================================
+class SoundManager:
+    """
+    Handles audio playback based on state transitions.
+    Includes BGM and SFX for specific game events.
+    """
+    def __init__(self):
+        pygame.mixer.init()
+        self.sounds = {}
+        self.load_assets()
+        
+        # State trackers for edge detection
+        self.last_scene = "WAITING"
+        self.last_cursor = -1
+        self.last_board = ['0'] * 9
+        self.last_p1_ready = '0'
+        self.last_p2_ready = '0'
+        self.last_p1_state = -1 # React state
+        self.last_p2_state = -1
+        self.last_packet_time = 0
+        self.played_win = False
+
+        # 1. Play Background Music (Loop)
+        if os.path.exists('assets/bgm.mp3'):
+            try:
+                pygame.mixer.music.load('assets/bgm.mp3')
+                pygame.mixer.music.set_volume(0.3) # 30% volume
+                pygame.mixer.music.play(-1)
+                print("[AUDIO] BGM Started")
+            except Exception as e:
+                print(f"[WARN] BGM Error: {e}")
+
+    def load_assets(self):
+        """Loads WAV files. Map keys to your filenames."""
+        files = {
+            'hint':   'assets/hint.mp3',   # 1.5 HINT Scene Intro
+            'button': 'assets/button.mp3', # 2 & 5. Ready/React Button
+            'move':   'assets/move.mp3',   # 3. Cursor Move
+            'place':  'assets/place.mp3',  # 4. Place Piece
+            'hit':    'assets/hit.mp3',    # 6. WAM Hit
+            'miss':   'assets/miss.mp3',   # 7. WAM Miss
+            'win':    'assets/win.mp3'     # 8. End Scene
+        }
+        for name, path in files.items():
+            if os.path.exists(path):
+                self.sounds[name] = pygame.mixer.Sound(path)
+                self.sounds[name].set_volume(0.5)
+            else:
+                print(f"[WARN] Sound file missing: {path}")
+                self.sounds[name] = None
+
+    def play(self, name):
+        if self.sounds.get(name):
+            self.sounds[name].play()
+
+    def update(self, scene, data, last_update_time):
+        """
+        Detects changes between frames to trigger sounds.
+        """
+        is_new_packet = (last_update_time != self.last_packet_time)
+        self.last_packet_time = last_update_time
+
+        # --- 1.5 HINT Scene Intro ---
+        if scene == "HINT" and self.last_scene != "HINT":
+            self.play('hint')
+
+        # --- 2. HINT Ready Buttons ---
+        if scene == "HINT" and len(data) > 2:
+            p1_r, p2_r = data[1], data[2]
+            # Play if status changes from 0 to 1
+            if (p1_r == '1' and self.last_p1_ready == '0') or \
+               (p2_r == '1' and self.last_p2_ready == '0'):
+                self.play('button')
+            self.last_p1_ready = p1_r
+            self.last_p2_ready = p2_r
+
+        # --- 3 & 4. Tic-Tac-Toe ---
+        if scene == "TTT" and len(data) > 11:
+            try:
+                # Cursor Move
+                cursor = int(data[11])
+                win = data[10]
+                if win == '0' and cursor != self.last_cursor and cursor != -1:
+                    self.play('move')
+                self.last_cursor = cursor
+                
+                # Place Piece (Board changed)
+                current_board = data[0:9]
+                if current_board != self.last_board:
+                    # Ignore initial empty board setup or reset
+                    if not (all(x == '0' for x in current_board) and self.last_scene != "TTT"):
+                         self.play('place')
+                self.last_board = current_board
+            except: pass
+
+        # --- 5. Reaction Game (Button Press) ---
+        elif scene == "REACT" and len(data) > 8:
+            p1s, p2s = data[7], data[8]
+            
+            # Detect State Change: 0->1 (Start Rolling) OR 1->2 (Lock)
+            # P1
+            if p1s != self.last_p1_state:
+                if (self.last_p1_state == '0' and p1s == '1') or \
+                   (self.last_p1_state == '1' and p1s == '2'):
+                    self.play('button')
+            # P2
+            if p2s != self.last_p2_state:
+                if (self.last_p2_state == '0' and p2s == '1') or \
+                   (self.last_p2_state == '1' and p2s == '2'):
+                    self.play('button')
+
+            self.last_p1_state = p1s
+            self.last_p2_state = p2s
+
+        # --- 6 & 7. Whac-A-Mole (Hit/Miss) ---
+        elif scene == "WAM" and len(data) > 5 and is_new_packet:
+            hit_flag = data[3]
+            miss_flag = data[4]
+            if hit_flag == '1': self.play('hit')
+            elif miss_flag == '1': self.play('miss')
+
+        # --- 8. End Scene ---
+        if scene == "END" and self.last_scene != "END":
+            self.play('win')
+
+        # Update last scene tracker
+        self.last_scene = scene
+
+# Global Sound Manager
+sound_mgr = None
 
 # ==========================================
 #   VISUAL EFFECTS SYSTEM
 # ==========================================
 class BackgroundEffect:
     def __init__(self, width, height):
-        self.width = width
-        self.height = height
+        self.width, self.height = width, height
         self.offset_y = 0
-        self.particles = []
-        for _ in range(50): self.particles.append(self.create_particle())
-
-    def create_particle(self):
-        return {
-            'x': random.randint(0, self.width),
-            'y': random.randint(0, self.height),
-            'speed': random.uniform(0.5, 2.0),
-            'size': random.randint(2, 4),
-            'alpha': random.randint(50, 150) 
-        }
+        self.particles = [{'x':random.randint(0,width), 'y':random.randint(0,height), 'speed':random.uniform(0.5,2.0), 'size':random.randint(2,4), 'alpha':random.randint(50,150)} for _ in range(50)]
 
     def update(self):
         self.offset_y = (self.offset_y + 0.5) % 40
         for p in self.particles:
-            p['y'] -= p['speed'] 
-            if p['y'] < 0:
-                p['y'] = self.height
-                p['x'] = random.randint(0, self.width)
+            p['y'] -= p['speed']
+            if p['y'] < 0: p['y'], p['x'] = self.height, random.randint(0, self.width)
 
     def draw(self, surface):
         surface.fill(COLOR_BG)
         pulse = (math.sin(pygame.time.get_ticks() * 0.002) + 1) * 0.5 * 50 + 20 
-        grid_color = (0, int(pulse), int(pulse)) 
-        for x in range(0, self.width, 40): pygame.draw.line(surface, grid_color, (x, 0), (x, self.height), 1)
+        grid_col = (0, int(pulse), int(pulse)) 
+        for x in range(0, self.width, 40): pygame.draw.line(surface, grid_col, (x, 0), (x, self.height), 1)
         for y in range(0, self.height, 40):
             dy = (y + self.offset_y) % self.height
-            pygame.draw.line(surface, grid_color, (0, dy), (self.width, dy), 1)
+            pygame.draw.line(surface, grid_col, (0, dy), (self.width, dy), 1)
         for p in self.particles:
             s = pygame.Surface((p['size'], p['size'])); s.set_alpha(p['alpha']); s.fill(COLOR_GLOW)
             surface.blit(s, (p['x'], p['y']))
-        pygame.draw.rect(surface, (0,0,0), (0,0,self.width,self.height), 50)
+        pygame.draw.rect(surface, (0,0,0), (0,0,self.width,self.height), 50) # Vignette
 
 bg_effect = None 
-
-
-
 
 # ==========================================
 #   SIMULATION WORKER (FULL SCENARIO MOCK)
@@ -99,7 +215,7 @@ def simulation_worker():
     - WAM: Hits, Misses (Wrong Input), Timeouts (No Input), Turn switching.
     """
     print("[SIM] Starting Full Scenario Simulation ...")
-    time.sleep(1)
+    time.sleep(5)
     
     shared_state["scene"] = "START"
     shared_state["connected"] = True
@@ -112,13 +228,13 @@ def simulation_worker():
         shared_state["scene"] = "HINT"
         # 1. Wait for P1
         shared_state["raw_data"] = ['1', '0', '0']
-        time.sleep(1.0)
+        time.sleep(3.0)
         # 2. P1 Ready, Wait for P2
         shared_state["raw_data"] = ['1', '1', '0']
-        time.sleep(0.5)
+        time.sleep(3.5)
         # 3. Both Ready -> Go
         shared_state["raw_data"] = ['1', '1', '1']
-        time.sleep(1.0)
+        time.sleep(3.0)
 
         shared_state["scene"] = "TTT"
         board = [0] * 9
@@ -130,33 +246,34 @@ def simulation_worker():
         for move in moves:
             # A. Cursor Wandering (Simulate thinking)
             start_cursor = random.randint(0, 8)
-            for _ in range(5): 
+            for _ in range(3): 
                 sim_cursor = random.randint(0, 8)
                 # Protocol: [B0..B8, CurP, Win, Cursor]
                 data = [str(x) for x in board] + [str(current_p), '0', str(sim_cursor)]
                 shared_state["raw_data"] = data
-                time.sleep(0.1) # Fast movement
+                shared_state["last_update"] = time.time()
+                time.sleep(0.7) # Fast movement
             
             # B. Cursor Lock on Target
             data = [str(x) for x in board] + [str(current_p), '0', str(move)]
             shared_state["raw_data"] = data
-            time.sleep(0.5) # Hesitation before press
+            shared_state["last_update"] = time.time()
+            time.sleep(1) # Hesitation before press
 
             # C. Move Executed
             board[move] = current_p
             next_p = 2 if current_p == 1 else 1
             data = [str(x) for x in board] + [str(next_p), '0', str(move)]
             shared_state["raw_data"] = data
+            shared_state["last_update"] = time.time()
             
             current_p = next_p
             time.sleep(0.5) # Post-move pause
         
         # D. Winner Announcement
-        # P1 connects 3 (indices 2, 4, 6 diagonal? No, indices 0,3,6 vertical logic depending on prev moves. 
-        # Actually in this script: 4, 0, 3, 5, 2, 1, 6.
-        # P1 has: 4, 3, 2, 6. (2,4,6 is diagonal!) -> P1 Wins.
         data = [str(x) for x in board] + ['2', '1', '6'] 
         shared_state["raw_data"] = data
+        shared_state["last_update"] = time.time()
         time.sleep(4)
 
         # ==========================================
@@ -177,33 +294,36 @@ def simulation_worker():
 
         # Phase 1: P1 Rolling
         # Protocol: [Target, D1, D2, R1, R2, Win, Time, S1, S2]
-        for i in range(30):
+        for i in range(20):
             d1 = random.randint(0, 99)
             data = [str(target), str(d1), '0', '-1', '-1', '-1', '0', '1', '0']
             shared_state["raw_data"] = data
-            time.sleep(0.05)
+            shared_state["last_update"] = time.time()
+            time.sleep(0.5)
             
         # Phase 2: P1 Locked (Result: 48, Diff: 2)
         p1_final = 48
         data = [str(target), str(p1_final), '0', str(p1_final), '-1', '-1', '0', '2', '0']
         shared_state["raw_data"] = data
+        shared_state["last_update"] = time.time()
         time.sleep(1.5) 
         
         # Phase 3: P2 Start Prompt
-        # (State remains same, handled by UI logic to show 'PRESS START')
-        time.sleep(1.0)
+        time.sleep(2.0)
 
         # Phase 4: P2 Rolling
-        for i in range(30):
+        for i in range(20):
             d2 = random.randint(0, 99)
             data = [str(target), str(p1_final), str(d2), str(p1_final), '-1', '-1', '0', '2', '1']
             shared_state["raw_data"] = data
-            time.sleep(0.05)
+            shared_state["last_update"] = time.time()
+            time.sleep(0.5)
             
         # Phase 5: P2 Locked & Win (Result: 55, Diff: 5) -> P1 Wins
         p2_final = 55
         data = [str(target), str(p1_final), str(p2_final), str(p1_final), str(p2_final), '1', '0', '2', '2']
         shared_state["raw_data"] = data
+        shared_state["last_update"] = time.time()
         time.sleep(4)
 
         # ==========================================
@@ -218,14 +338,13 @@ def simulation_worker():
         score1, score2 = 0, 0
         moles = ['0'] * 9
         
-        # === ROUND 1: PLAYER 1 (30s Simulation) ===
-        # P1State=1, P2State=0
-        for t in range(30000, 0, -1000):
+        # === ROUND 1: PLAYER 1 (Simulation) ===
+        for t in range(20000, 0, -1000):
             hit_flag = '0'
             miss_flag = '0'
-            seconds_left = t / 1000.0
+            seconds_left = t / 100.0
             
-            # Logic: Spawn mole every 2 sec
+            # Logic: Spawn mole
             if t % 2000 == 0: 
                 moles = ['0']*9
                 moles[random.randint(0,8)] = '1'
@@ -236,37 +355,32 @@ def simulation_worker():
                 if '1' in moles: mole_idx = moles.index('1')
                 
                 if mole_idx != -1:
-                    # Case A: Perfect Hit (First 20s)
+                    # Case A: Perfect Hit (First part)
                     if seconds_left > 10:
                         moles[mole_idx] = '0'
                         score1 += 10
                         hit_flag = '1'
-                    # Case B: Miss/Wrong Input (Next 5s)
-                    elif seconds_left > 5:
-                        miss_flag = '1' # Mole stays up, but miss event fires
-                    # Case C: Timeout (Last 5s)
+                    # Case B: Miss/Wrong Input (Second part)
                     else:
-                        moles[mole_idx] = '0' # Disappears naturally
-                        miss_flag = '1' # Count as miss
+                        miss_flag = '1' # Mole stays up, but miss event fires
 
             # Protocol: [S1, S2, In, Hit, Miss, Time, Win, P1St, P2St, M0..M8]
             data = [str(score1), str(score2), 'N', hit_flag, miss_flag, str(t), '-1', '1', '0'] + moles
             shared_state["raw_data"] = data
-            time.sleep(0.1)
+            shared_state["last_update"] = time.time()
+            time.sleep(0.5)
 
         # === INTERMISSION ===
-        # P1State=2, P2State=0
         for _ in range(20): 
             data = [str(score1), str(score2), 'N', '0', '0', '60000', '-1', '2', '0'] + ['0']*9
             shared_state["raw_data"] = data
-            time.sleep(0.1)
+            shared_state["last_update"] = time.time()
+            time.sleep(0.5)
 
-        # === ROUND 2: PLAYER 2 (30s Simulation) ===
-        # P1State=2, P2State=1
-        for t in range(30000, 0, -1000):
+        # === ROUND 2: PLAYER 2 (Simulation) ===
+        for t in range(20000, 0, -1000):
             hit_flag = '0'
             miss_flag = '0'
-            seconds_left = t / 1000.0
             
             if t % 2000 == 0: 
                 moles = ['0']*9
@@ -277,25 +391,22 @@ def simulation_worker():
                 if '1' in moles: mole_idx = moles.index('1')
                 
                 if mole_idx != -1:
-                    # P2 is surprisingly good
                     moles[mole_idx] = '0'
                     score2 += 15 
                     hit_flag = '1'
             
             data = [str(score1), str(score2), 'N', hit_flag, miss_flag, str(t), '-1', '2', '1'] + moles
             shared_state["raw_data"] = data
-            time.sleep(0.1)
+            shared_state["last_update"] = time.time()
+            time.sleep(0.5)
 
         # === GAME OVER ===
         winner = '2' if score2 > score1 else '1'
         shared_state["scene"] = "END"
         # Protocol: [Winner, P1_Wins, P2_Wins]
         shared_state["raw_data"] = [winner, '2', '1'] 
+        shared_state["last_update"] = time.time()
         time.sleep(6)
-
-
-
-
 
 # ==========================================
 #   UART WORKER
@@ -321,11 +432,8 @@ def serial_worker():
             shared_state["connected"] = False
             time.sleep(1)
 
-
-
-
 # ==========================================
-#   GRAPHICS ENGINE
+#   GRAPHICS & RENDERERS
 # ==========================================
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -343,8 +451,6 @@ except:
     FONT_HUGE = pygame.font.SysFont(None, 100)
     FONT_SMALL = pygame.font.SysFont(None, 20)
 
-
-
 def draw_tech_border(surface, rect, color, thickness=2):
     x, y, w, h = rect
     cut = 20
@@ -352,16 +458,12 @@ def draw_tech_border(surface, rect, color, thickness=2):
     pygame.draw.polygon(surface, color, points, thickness)
     pygame.draw.line(surface, color, (x+cut, y+h+5), (x+w-cut, y+h+5), 1)
 
-
-
 def draw_text_center(surface, text, font, color, center_pos):
     t = font.render(str(text), True, color)
     r = t.get_rect(center=center_pos)
     s = font.render(str(text), True, (0,0,0))
     surface.blit(s, (r.x+2, r.y+2))
     surface.blit(t, r)
-
-
 
 # --- SCENES ---
 def scene_hint(data):
@@ -389,8 +491,6 @@ def scene_hint(data):
     draw_text_center(screen, "PLAYER 2", FONT_BIG, c2, (WIDTH-300, 410))
     draw_text_center(screen, "READY" if data[2]=='1' else "WAITING", FONT_MAIN, c2, (WIDTH-300, 470))
 
-
-
 def scene_ttt(data):
     if len(data) < 11: return
     bd, cp, win = data[0:9], data[9], data[10]
@@ -415,8 +515,6 @@ def scene_ttt(data):
             pygame.draw.circle(screen, COLOR_P1, (cx,cy), 60, 5); pygame.draw.circle(screen, (0,100,50), (cx,cy), 65, 2)
         elif bd[i]=='2':
             o=50; pygame.draw.line(screen, COLOR_P2, (cx-o,cy-o), (cx+o,cy+o), 8); pygame.draw.line(screen, COLOR_P2, (cx+o,cy-o), (cx-o,cy+o), 8)
-
-
 
 def scene_react(data):
     if len(data)<9: return
@@ -444,8 +542,6 @@ def scene_react(data):
     draw_text_center(screen, "PLAYER 2", FONT_BIG, c2, (WIDTH-250, 390))
     draw_text_center(screen, st2, FONT_MAIN, (200,200,200), (WIDTH-250, 440))
     draw_text_center(screen, p2v, FONT_HUGE, (255,255,255), (WIDTH-250, 520))
-
-
 
 def scene_wam(data):
     if len(data) < 18: return
@@ -505,8 +601,6 @@ def scene_wam(data):
             pygame.draw.circle(screen, (15,20,25), (cx,cy), 20)
         draw_text_center(screen, str(i+1), FONT_SMALL, (100,100,100), (cx+50, cy+50))
 
-
-
 def scene_end(data):
     if len(data)<3: return
     win, w1, w2 = data[0], data[1], data[2]
@@ -518,8 +612,6 @@ def scene_end(data):
     draw_text_center(screen, champ, FONT_HUGE, cc, (WIDTH//2, 320))
     draw_text_center(screen, f"P1 WINS: {w1}  |  P2 WINS: {w2}", FONT_MAIN, COLOR_GLOW, (WIDTH//2, 450))
 
-
-
 def scene_waiting():
     draw_text_center(screen, "SYSTEM INITIALIZING...", FONT_BIG, COLOR_GLOW, (WIDTH//2, HEIGHT//2-50))
     msg, col = f"CONNECTING TO {SERIAL_PORT}...", COLOR_DANGER
@@ -527,24 +619,29 @@ def scene_waiting():
         msg, col = "CONNECTION ESTABLISHED", COLOR_P1
         bw = (pygame.time.get_ticks()//5)%300
         pygame.draw.rect(screen, col, (WIDTH//2-150, HEIGHT//2+80, bw, 10))
-    if USE_SIMULATION: msg, col = ":: SIMULATION MODE  ::", COLOR_ACCENT
+    if USE_SIMULATION: msg, col = ":: SIMULATION MODE (v1.5) ::", COLOR_ACCENT
     draw_text_center(screen, msg, FONT_MAIN, col, (WIDTH//2, HEIGHT//2+50))
 
-
-
 def main():
-    global bg_effect
+    global bg_effect, sound_mgr
     bg_effect = BackgroundEffect(WIDTH, HEIGHT)
+    sound_mgr = SoundManager() # Init Sound
+    
     if USE_SIMULATION: t = threading.Thread(target=simulation_worker, daemon=True)
     else: t = threading.Thread(target=serial_worker, daemon=True)
     t.start()
+    
     run = True
     while run:
         for e in pygame.event.get():
             if e.type==pygame.QUIT or (e.type==pygame.KEYDOWN and e.key==pygame.K_ESCAPE): run=False
+        
         bg_effect.update()
         bg_effect.draw(screen)
+        
         sc, dt = shared_state["scene"], shared_state["raw_data"]
+        # Update Sound Logic
+        sound_mgr.update(sc, dt, shared_state["last_update"])
         
         if not shared_state["connected"]: scene_waiting()
         elif sc=="START" or sc=="WAITING": scene_waiting()
