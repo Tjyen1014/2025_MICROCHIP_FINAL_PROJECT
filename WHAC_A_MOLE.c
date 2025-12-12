@@ -1,5 +1,5 @@
 #include <stdlib.h> // for rand()
-#include "INTERFACE.h"
+#include "whac_a_mole.h"
 
 #define GAME_DURATION_SEC 60.0
 
@@ -12,9 +12,7 @@ static long spawn_interval_ticks = 0;
 static long stay_time_ticks = 0;
 static unsigned long last_tick = 0;
 
-WHAC_A_MOLE_OUTPUT_TABLE WHAC_A_MOLE_UPDATE(WHAC_A_MOLE_OUTPUT_TABLE table, int adc_value) {
-    
-
+WHAC_A_MOLE_OUTPUT_TABLE WHAC_A_MOLE_UPDATE(WHAC_A_MOLE_OUTPUT_TABLE table) {
     unsigned long current_tick = table.tick100us; //now is Xsec
     unsigned long delta_ticks = current_tick - last_tick; //check does the time go?
     last_tick = current_tick; 
@@ -23,6 +21,9 @@ WHAC_A_MOLE_OUTPUT_TABLE WHAC_A_MOLE_UPDATE(WHAC_A_MOLE_OUTPUT_TABLE table, int 
     table.HIT = 0;
     table.MISS = 0;
     table.NOT_HIT_NOT_MISS = 1;     
+
+    spawn_interval_ticks = 3500; //0.35sec
+    stay_time_ticks = 7500; //0.75sec
 
     //change 1~9 to 0~8
     int input_idx = -1;
@@ -95,16 +96,16 @@ WHAC_A_MOLE_OUTPUT_TABLE WHAC_A_MOLE_UPDATE(WHAC_A_MOLE_OUTPUT_TABLE table, int 
         }
 
         //spawn
-        if (active_mole == -1) {
-            spawn_counter += delta_ticks;
+        if (active_mole == -1) { //no mole
+            spawn_counter += delta_ticks; //count to 0.35sec
             if (spawn_counter >= spawn_interval_ticks) {
-                spawn_counter = 0;
+                spawn_counter = 0; //reset
                 active_mole = rand() % 9; 
                 table.WHAC_A_MOLE[active_mole] = 1; 
-                stay_counter = 0;
+                stay_counter = 0; //start to count how long it stay
             }
-        } else {
-            stay_counter += delta_ticks;
+        } else { //has mole
+            stay_counter += delta_ticks;//count to 0.75sec
             if (stay_counter >= stay_time_ticks) {
                 // ESCAPE!
                 (*current_score) -= 2; 
@@ -112,10 +113,11 @@ WHAC_A_MOLE_OUTPUT_TABLE WHAC_A_MOLE_UPDATE(WHAC_A_MOLE_OUTPUT_TABLE table, int 
                 table.NOT_HIT_NOT_MISS = 0;
                 table.WHAC_A_MOLE[active_mole] = 0; 
                 active_mole = -1;
-                spawn_counter = 0;
+                spawn_counter = 0;//start to count how long it until spawn
             }
         }
     }
+
     //no one play
     else {
          for(int j=0; j<9; j++) table.WHAC_A_MOLE[j] = 0;
@@ -139,8 +141,11 @@ WHAC_A_MOLE_OUTPUT_TABLE WHAC_A_MOLE_UPDATE_WHO_WIN(WHAC_A_MOLE_OUTPUT_TABLE tab
     else if (table.SCORE_P1 < table.SCORE_P2) {
         table.WINNER = 2; // P2 win
     } 
-    else {
+    else if (table.SCORE_P1 == table.SCORE_P2) {
         table.WINNER = 0; // Draw
+    }
+    else {
+        table.WINNER = -1;//error
     }
 
     return table;
